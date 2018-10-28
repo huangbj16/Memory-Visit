@@ -258,12 +258,14 @@ end
 //自动机的变量
 reg[31:0] input_address;
 reg[31:0] input_data;
-reg [1:0] state;
+reg [2:0] state;
 reg [3:0] count = 0;//count to 10;
-localparam [1:0] SWITCH_ADDRESS = 2'b00,
-                 SWITCH_DATA = 2'b01,
-                 STORE_DATA = 2'b10,
-                 LED_DATA = 2'b11;
+localparam [2:0] SWITCH_ADDRESS = 3'b000,
+                 SWITCH_DATA = 3'b001,
+                 STORE_DATA = 3'b010,
+                 LED_DATA = 3'b011,
+                 STORE_DATA2 = 3'b100,
+                 LED_DATA2 = 3'b101;
 
 //内存读取的变量
 reg begin_end = 1'b0;
@@ -274,15 +276,27 @@ reg[19:0] temp_addr;
 reg[3:0] temp_be;
 assign base_ram_ce_n = temp_ce;//BaseRAM片选，低有效
 assign base_ram_oe_n = temp_oe;//BaseRAM读使能，低有效
-assign base_ram_we_n = temp_we; //BaseRAM写使能，低有效
+assign base_ram_we_n = temp_we;//BaseRAM写使能，低有效
 assign base_ram_data = temp_data;//BaseRAM数据，低8位与CPLD串口控制器共享
 assign base_ram_addr = temp_addr;//BaseRAM地址
 assign base_ram_be_n = temp_be;//BaseRAM字节使能，低有效。如果不使用字节使能，请保持为0
+
+reg temp_ce2, temp_oe2, temp_we2;
+reg[31:0] temp_data2;
+reg[19:0] temp_addr2;
+reg[3:0] temp_be2;
+assign ext_ram_ce_n = temp_ce2;//ExtRAM片选，低有效
+assign ext_ram_oe_n = temp_oe2;//ExtRAM读使能，低有效
+assign ext_ram_we_n = temp_we2;//ExtRAM写使能，低有效
+assign ext_ram_data = temp_data2;//ExtRAM数据，低8位与CPLD串口控制器共享
+assign ext_ram_addr = temp_addr2;//ExtRAM地址
+assign ext_ram_be_n = temp_be2;//ExtRAM字节使能，低有效。如果不使用字节使能，请保持为0
 
 //define state machine of click clock
 always @(posedge clock_btn or posedge reset_btn) begin//ram operation
     if(reset_btn) begin
         state <= SWITCH_ADDRESS;
+        count <= 4'b0000;
     end
     else begin
         case(state)
@@ -304,6 +318,24 @@ always @(posedge clock_btn or posedge reset_btn) begin//ram operation
             end
         end
         LED_DATA: begin
+            if(count == 9) begin
+                state <= STORE_DATA2;
+                count <= 4'b0000;
+            end
+            else begin
+                count <= count + 1'b1;
+            end
+        end
+        STORE_DATA2: begin
+            if(count == 9) begin
+                state <= LED_DATA2;
+                count <= 4'b0000;
+            end
+            else begin
+                count <= count + 1'b1;
+            end
+        end
+        LED_DATA2: begin
             if(count == 9) begin
                 state <= SWITCH_ADDRESS;
                 count <= 4'b0000;
@@ -357,6 +389,52 @@ always @(posedge clk_50M) begin
                 data_got <= 1'b1;
             end
         end
+        else if(state == STORE_DATA2) begin
+            if(~begin_end) begin//start
+                temp_addr <= input_address[19:0] + count;
+                temp_data <= 32'bzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz;
+                temp_ce <= 1'b0;
+                temp_oe <= 1'b0;
+                temp_we <= 1'b1;
+                begin_end <= 1'b1;
+                data_got <= 1'b0;
+
+                temp_ce2 <= 1'b1;
+                temp_oe2 <= 1'b1;
+                temp_we2 <= 1'b1;
+            end
+            else begin
+                temp_ce <= 1'b1;
+                temp_oe <= 1'b1;
+                temp_we <= 1'b1;
+                begin_end <= 1'b0;
+                data_got <= 1'b1;
+
+                temp_data2 <= temp_data - 1'b1;
+                temp_addr2 <= input_address[19:0] + count;
+                temp_ce2 <= 1'b0;
+                temp_oe2 <= 1'b1;
+                temp_we2 <= 1'b0;
+            end
+        end
+        else if(state == LED_DATA2) begin
+            if(~begin_end) begin//start
+                temp_addr2 <= input_address[19:0] + count;
+                temp_data2 <= 32'bzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz;
+                temp_ce2 <= 1'b0;
+                temp_oe2 <= 1'b0;
+                temp_we2 <= 1'b1;
+                begin_end <= 1'b1;
+                data_got <= 1'b0;
+            end
+            else begin
+                temp_ce2 <= 1'b1;
+                temp_oe2 <= 1'b1;
+                temp_we2 <= 1'b1;
+                begin_end <= 1'b0;
+                data_got <= 1'b1;
+            end
+        end
     end
 end
 
@@ -377,6 +455,17 @@ always @(state, data_got) begin//control led_bits
         end
         else begin
             led_bits <= {temp_addr[7:0], temp_data[7:0]};
+        end
+    end
+    STORE_DATA2: begin
+        led_bits <= {temp_addr2[7:0], temp_data2[7:0]};
+    end
+    LED_DATA2: begin
+        if(~data_got) begin
+            led_bits <= 16'b0000000000000000;
+        end
+        else begin
+            led_bits <= {temp_addr2[7:0], temp_data2[7:0]};
         end
     end
     default: begin
