@@ -24,7 +24,7 @@ else
 fi
 export LD_LIBRARY_PATH
 
-HD_PWD='D:/2018autumn/organization/Simple-ALU/thinpad_top.runs/synth_1'
+HD_PWD='D:/2018autumn/organization/Memory-Visit/thinpad_top.runs/synth_1'
 cd "$HD_PWD"
 
 HD_LOG=runme.log

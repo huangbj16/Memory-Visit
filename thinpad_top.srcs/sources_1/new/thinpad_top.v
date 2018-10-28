@@ -259,7 +259,7 @@ end
 reg[31:0] input_address;
 reg[31:0] input_data;
 reg [1:0] state;
-reg [3:0] count = 0;
+reg [3:0] count = 0;//count to 10;
 localparam [1:0] SWITCH_ADDRESS = 2'b00,
                  SWITCH_DATA = 2'b01,
                  STORE_DATA = 2'b10,
@@ -295,13 +295,26 @@ always @(posedge clock_btn or posedge reset_btn) begin//ram operation
             state <= STORE_DATA;
         end
         STORE_DATA: begin
-            state <= LED_DATA;
+            if(count == 9) begin
+                state <= LED_DATA;
+                count <= 4'b0000;
+            end
+            else begin
+                count <= count + 1'b1;
+            end
         end
         LED_DATA: begin
-            state <= SWITCH_ADDRESS;
+            if(count == 9) begin
+                state <= SWITCH_ADDRESS;
+                count <= 4'b0000;
+            end
+            else begin
+                count <= count + 1'b1;
+            end
         end
         default: begin
             state <= SWITCH_ADDRESS;
+            count <= 4'b0000;
         end
         endcase;
     end
@@ -312,11 +325,11 @@ always @(posedge clk_50M) begin
         temp_be <= 4'b0000;
         if(state == STORE_DATA) begin
             if(~begin_end) begin//start
-                temp_addr <= input_address[19:0];
+                temp_addr <= input_address[19:0] + count;
                 temp_ce <= 1'b0;
                 temp_oe <= 1'b1;
                 temp_we <= 1'b0;
-                temp_data <= input_data;
+                temp_data <= input_data + count;
                 begin_end <= 1'b1;
             end
             else begin
@@ -328,7 +341,7 @@ always @(posedge clk_50M) begin
         end
         else if(state == LED_DATA) begin
             if(~begin_end) begin//start
-                temp_addr <= 5'h00002;
+                temp_addr <= input_address[19:0] + count;
                 temp_data <= 32'bzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz;
                 temp_ce <= 1'b0;
                 temp_oe <= 1'b0;
@@ -356,14 +369,14 @@ always @(state, data_got) begin//control led_bits
         led_bits <= input_address[15:0];
     end
     STORE_DATA: begin
-        led_bits <= input_data[15:0];
+        led_bits <= {temp_addr[7:0], temp_data[7:0]};
     end
     LED_DATA: begin
         if(~data_got) begin
             led_bits <= 16'b0000000000000000;
         end
         else begin
-            led_bits <= base_ram_data[15:0];
+            led_bits <= {temp_addr[7:0], temp_data[7:0]};
         end
     end
     default: begin
